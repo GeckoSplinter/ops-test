@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: config-plex
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: longhorn-static
+  volumeMode: Filesystem
+  volumeName: pvc-241b7c9b-329f-4864-9ab9-77228f2e7ca1

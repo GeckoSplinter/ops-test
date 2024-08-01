@@ -1,0 +1,113 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: qbittorrent
+  namespace: downloads
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: app-template
+      version: 3.2.1
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      qbittorrent:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/onedr0p/qbittorrent
+              tag: 4.6.5@sha256:c019af23966ebafcaf1713d4553bc043246858b711a7d57d8bee358a89990a3e
+            env:
+              TZ: Europe/Paris
+              QBITTORRENT__PORT: &port 80
+              QBITTORRENT__BT_PORT: &bittorrentPort 55633
+              QBT_Application__MemoryWorkingSetLimit: 12000
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            resources:
+              requests:
+                cpu: 10m
+                memory: 250Mi
+              limits:
+                memory: 8Gi
+    defaultPodOptions:
+      annotations:
+        setGateway: "true"
+      securityContext:
+        runAsUser: 568
+        runAsGroup: 568
+        fsGroup: 568
+        fsGroupChangePolicy: OnRootMismatch
+        supplementalGroups: [10000]
+    service:
+      app:
+        controller: qbittorrent
+        primary: true
+        ports:
+          http:
+            port: *port
+      bittorrent:
+        controller: qbittorrent
+        primary: false
+        nameOverride: bittorrent
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+        annotations:
+          io.cilium/lb-ipam-ips: 192.168.42.68
+        ports:
+          bittorrent:
+            port: *bittorrentPort
+            protocol: TCP
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: "internal.${SECRET_DOMAIN}"
+          hajimari.io/icon: "cbi:qbittorrent"
+          hajimari.io/name: torrent
+        className: internal
+        hosts:
+          - host: "qbit.${SECRET_DOMAIN}"
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    global:
+      fullnameOverride: qbittorrent
+    hostname: qbittorrent
+    # Note: If downloading very large torrents it might be worth using NFS for your download directory.
+    # Beware if you are downloading torrents directly to a ZFS dataset that dataset will accrue fragmentation.
+    persistence:
+      config:
+        enabled: true
+        existingClaim: qbittorrent-config
+        globalMounts:
+          - path: /config
+      media:
+        enabled: true
+        type: nfs
+        server: 192.168.42.10
+        path: /mnt/user/Video
+        globalMounts:
+          - path: /media
+      incomplete:
+        enabled: true
+        type: emptyDir
